@@ -34,7 +34,6 @@ struct http_status_codes {
 };
 struct http_response_writer_t {
   http_headers  _headers;
-  http_server   _server;
   http_id       _rid           = 0ui64;
   uint16_t      _status_code   = http_status_codes::ok;
   tpio_string   _status_reason = "ok";
@@ -51,20 +50,18 @@ struct http_response_writer_t {
   bool _is_hijacked       = false;
   bool _response_sent     = false;
   bool _response_complete = true;
-  bool _chunks_flushed    = false;
 };
 using http_response_writer = std::shared_ptr<http_response_writer_t>;
 
 auto http_response_writer_new( http_server server, http_request )->http_response_writer;
-auto http_response_writer_cancel( http_response_writer) ->void;
-auto http_response_writer_flush( http_response_writer )->std::tuple<tpio_context*, bool>;
+auto http_response_cancel(http_server, http_id)->void;
+
+
 auto http_response_writer_write( http_response_writer, uint8_t* data, uintptr_t size )->void;
 auto http_response_writer_status_code( http_response_writer, uint32_t status_code )->void;
-auto http_response_writer_statu_reason( http_response_writer, tpio_string const&reason )->void;
+auto http_response_writer_status_reason( http_response_writer, tpio_string const&reason )->void;
 auto http_response_writer_hijack(http_response_writer)->void;
-
-auto http_response_writer_flush_response()->std::tuple<tpio_context*, bool>;
-auto http_response_writer_flush_response_body()->std::tuple<tpio_context*, bool>;
+auto http_send_response_context_new( http_response_writer writer )->tpio_context*;
 
 auto _http_response_headers_write( http_response_headers*dest, uint8_t*header_start, uintptr_t hlen, http_headers headers )->void;
 auto _http_chunks_write( uint8_t*buf, uintptr_t buflen, http_chunks chunks )->void;
@@ -72,3 +69,13 @@ auto _http_chunks_write( uint8_t*buf, uintptr_t buflen, http_chunks chunks )->vo
 
 auto _http_headers_alloc_size( http_headers headers )->uintptr_t;
 auto _http_chunks_data_size( http_chunks chunks )->uintptr_t;
+
+struct http_stream_writer_t {
+  http_headers _headers;
+  tpio_string  _reason;
+  http_version _version;
+  uint16_t     _status_code = http_status_codes::ok;
+};
+using http_stream_writer = std::shared_ptr < http_stream_writer_t >;
+auto http_send_response_header_context_new( http_stream_writer writer )->tpio_context*;
+auto http_send_response_body_context_new( const uint8_t*data, uintptr_t len )->tpio_context*;

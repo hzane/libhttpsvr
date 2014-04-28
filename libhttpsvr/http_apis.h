@@ -17,7 +17,7 @@ auto http_receive_http_request( tpio_handle tpio,
 auto http_send_http_response( tpio_handle tpio,
                               handle_t q, 
                               http_id rid, 
-                              http_response_write write, 
+                              tpio_context* ctx, bool hasmore,
                               http_send_response_end callback ) -> void;
 
 auto http_receive_request_entity_body( tpio_handle tpio,
@@ -29,7 +29,8 @@ auto http_receive_request_entity_body( tpio_handle tpio,
 auto http_send_response_entity_body( tpio_handle tpio,
                                      handle_t q, 
                                      http_id rid, 
-                                     http_response_write write, 
+                                     tpio_context* ctx, bool hasmore,
                                      http_send_response_entity_body_end callback ) -> void;
 
 auto http_cancel_http_request( tpio_handle tpio, handle_t q, http_id rid, http_cancel_http_request_end callback ) ->void;
+

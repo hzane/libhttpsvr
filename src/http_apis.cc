@@ -31,24 +31,19 @@ auto http_receive_request_entity_body( tpio_handle tpio, handle_t q, http_id rid
   tpio_http_receive_request_entity_body( tpio, q, rid, ctx );
 }
 
-auto http_send_http_response( tpio_handle tpio, handle_t q, http_id rid, http_response_write write, http_send_response_end callback ) -> void {
-  tpio_context *ctx = nullptr;
-  bool hasmore = false;
-  std::tie( ctx, hasmore ) = write();
+auto http_send_http_response( tpio_handle tpio, handle_t q, http_id rid, tpio_context* ctx, bool hasmore, http_send_response_end callback ) -> void {
+
   ctx->end_io = [callback]( tpio_context*, uint32_t result, uintptr_t xfered ) {
     callback( result, xfered );
   };  // nothing should be done
   tpio_http_send_http_response( tpio, q, rid, ctx, hasmore );
 }
 
-auto http_send_response_entity_body( tpio_handle tpio, handle_t q, http_id rid, http_response_write write, http_send_response_entity_body_end callback ) -> void {
-  tpio_context *ctx = nullptr;
-  bool hasmore = false;
-  std::tie(ctx, hasmore) = write();
+auto http_send_response_entity_body( tpio_handle tpio, handle_t q, http_id rid, tpio_context* ctx, bool hasmore, http_send_response_entity_body_end callback ) -> void {
   ctx->end_io = [callback]( tpio_context*ctx, uint32_t result, uintptr_t xfered ) {
     callback( ctx->buffer, result, xfered );
   };
-  tpio_http_send_response_entity_body( tpio, q, rid, ctx, hasmore );
+  tpio_http_send_response_entity_body( tpio, q, rid, ctx, hasmore);
 }
 
 auto http_cancel_http_request( tpio_handle tpio, handle_t q, http_id rid, http_cancel_http_request_end callback ) ->void {

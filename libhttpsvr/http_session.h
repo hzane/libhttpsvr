@@ -37,4 +37,10 @@ auto http_accept_request( http_server server, http_session_handler handler ) -> 
 
 auto http_session_fill_chunks( http_session sess, http_request req ) ->void;
 auto http_session_fill_headers( http_session sess, http_request req )->void;
-auto http_listen_and_serve( http_server, tpio_string const&urlprefix, http_session_handler, uintptr_t cocurrents )->uint32_t;
+auto http_server_run( http_server, tpio_string const&urlprefix, http_session_handler, worker_token )->uint32_t;
+
+
+auto worker_token_create( int32_t cocurrents )->worker_token;
+auto worker_token_destroy( worker_token )->void;
+auto worker_token_acquire( worker_token )->uint32_t;
+auto worker_token_commit( worker_token )->void;

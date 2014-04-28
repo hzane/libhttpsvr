@@ -33,7 +33,8 @@ int main ( int argc, char*argv[] ) {
   tpio_string address( argv[1] );
   server = http_server_new (  );
 
-  http_listen_and_serve( server, address, http_session_handle_generic, http_env::max_cocurrent_requests );  // no return
+  auto token = worker_token_create( http_env::max_cocurrent_requests );
+  http_server_run( server, address, http_session_handle_generic, token );  // no return
 
   tpio_env_close_and_wait();
   http_server_cleanup(server); // make sure all handles and tpio are cleaned

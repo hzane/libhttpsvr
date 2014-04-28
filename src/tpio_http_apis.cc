@@ -51,12 +51,11 @@ auto tpio_http_send_http_response( tpio_handle tpio, handle_t q, http_id rid, tp
 
 auto tpio_http_send_response_entity_body( tpio_handle tpio, handle_t q, http_id rid, tpio_context* ctx, bool send_not_end ) ->void {
   auto flags = http_env::send_response_entity_flag | ( send_not_end ? http_env::send_not_end_flag : 0 );
-  auto c = (http_response_body)ctx->buffer;
-  auto cpolicy = &http_env_cache_policy();
+
   auto ovlp = static_cast<overlapped>( ctx );
   tpio_env_addref();
   tpio_handle_start_io( tpio );
-  auto r = HttpSendResponseEntityBody( q, rid, flags, c->count, c->chunks, nullptr, nullptr, 0, ovlp, nullptr );
+  auto r = HttpSendResponseEntityBody( q, rid, flags, 1, (PHTTP_DATA_CHUNK)ctx->buffer, nullptr, nullptr, 0, ovlp, nullptr );
   if ( tpio_is_failed( r ) ) {
     tpio_handle_cancel_io( tpio );
     tpio_callback( nullptr, nullptr, ovlp, r, 0, tpio->tpio );

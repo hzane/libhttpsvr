@@ -18,6 +18,7 @@ using handle_t              = HANDLE;
 
 using tpio_t                = PTP_IO;
 using overlapped            = LPOVERLAPPED;
+using worker_token          = handle_t;
 
 auto http_unknown_header_mem_size(http_unknown_header*)->uintptr_t;
 auto http_response_headers_mem_size(http_response_headers*)->uintptr_t;

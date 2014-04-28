@@ -13,32 +13,73 @@ auto http_response_writer_new( http_server server, http_request req)->http_respo
   auto r = std::make_shared<http_response_writer_t>();
   r->_chunks = std::make_shared<http_chunks_t>();
   r->_headers = std::make_shared<http_headers_t>();
-  r->_server = server;
   r->_rid = req->RequestId;
   return std::move(r);
 }
 
-auto http_response_writer_cancel( http_response_writer writer) ->void {
-  auto server = writer->_server;
+/*
+auto http_response_writer_cancel( http_response_writer writer, http_server server) ->void {
   auto tpio = server->_tpio;
   auto q = server->_queue;
   auto rid = writer->_rid;
   http_cancel_http_request( tpio, q, rid, [writer](http_id, uint32_t) {} );
 }
-
-auto http_response_writer_compose_response( http_response_writer writer )->tpio_context* {
+*/
+auto http_response_cancel( http_server server, http_id id) ->void {
+  http_cancel_http_request( server->_tpio, server->_queue, id, []( http_id, uint32_t ) {} );
+}
+auto http_send_response_body_context_new( const uint8_t*data, uintptr_t len)->tpio_context* {
+  auto dl = sizeof( http_data_chunk ) + len;
+  auto ctx = _tpio_context_create( dl );
+  auto dc = (http_data_chunk*)ctx->buffer;
+  auto buffer = ctx->buffer + sizeof( *dc );
+  dc->DataChunkType = HttpDataChunkFromMemory;
+  dc->FromMemory.BufferLength = (uint32_t)len;
+  dc->FromMemory.pBuffer = buffer;
+  memcpy_s( buffer, len, data, len );
+  return ctx;
+}
+auto http_send_response_header_context_new( http_stream_writer writer ) ->tpio_context* {
   auto rl = sizeof( HTTP_RESPONSE );
+  auto rsnl = writer->_reason.size();
+  auto hl = _http_headers_alloc_size( writer->_headers );
+  auto ctx = _tpio_context_create(rl + rsnl + hl);
+  auto ptr = ctx->buffer;
+  auto presp = ptr;
+  auto preason = presp + rl;
+  auto phstart = preason + rsnl;
+
+  ZeroMemory( ptr, rl + rsnl +hl );
+  auto resp = (http_response)presp;
+  resp->Version = writer->_version;
+  resp->StatusCode = writer->_status_code;
+  memcpy_s( preason, rsnl, writer->_reason.c_str(), rsnl );
+  resp->pReason = (char*)preason;
+  _http_response_headers_write( &resp->Headers, phstart, hl, writer->_headers );
+  return ctx;
+}
+
+auto http_send_response_context_new( http_response_writer writer )->tpio_context* {
+  auto rl = sizeof( HTTP_RESPONSE );
+  if ( writer->_chunks &&writer->_chunks->size() == 1 && writer->_response_complete
+       && !writer->_headers->has( HttpHeaderContentLength ) ) {
+    auto ds = _http_chunks_data_size( writer->_chunks ) - sizeof( http_data_chunk ) * writer->_chunks->size();
+    writer->_headers->set( HttpHeaderContentLength, tpio_string_i( ds ) );
+  }
+  if ( !writer->_headers->has( HttpHeaderContentType ) ) {
+    writer->_headers->set( HttpHeaderContentType, http_env_default_content_type() );
+  }
   auto rsnl = writer->_status_reason.size();
   auto hl = _http_headers_alloc_size( writer->_headers );
   auto datalen = _http_chunks_data_size( writer->_chunks );
   auto ctx = _tpio_context_create( rl + rsnl + hl + datalen );
-
+  
   auto ptr = ctx->buffer;
   auto presp = ptr;
   auto preason = presp + rl;
   auto phstart = preason + rsnl;
   auto pchunks = phstart + hl;
-
+  
   auto resp = (http_response)presp;
   ZeroMemory( presp, rl );
   resp->Version = writer->_version;
@@ -59,33 +100,6 @@ auto http_response_writer_compose_response( http_response_writer writer )->tpio_
   return ctx;
 }
 
-auto http_response_writer_flush( http_response_writer writer )->std::tuple<tpio_context*, bool> {
-  // HttpHeaderContentLength
-
-  if ( writer->_chunks &&writer->_chunks->size() == 1 && !writer->_headers->has(HttpHeaderContentLength)) {
-    auto ds = _http_chunks_data_size( writer->_chunks ) - sizeof(http_data_chunk);
-    writer->_headers->set( HttpHeaderContentLength, tpio_string_i(ds) );
-  }
-  if ( !writer->_headers->has( HttpHeaderContentType ) ) {
-    writer->_headers->set( HttpHeaderContentType, http_env_default_content_type() );
-  }
-  auto ctx = http_response_writer_compose_response( writer );
-  return std::make_tuple( ctx, false );
-}
-auto http_response_writer_flush_response( http_response_writer writer )->std::tuple<tpio_context*, bool> {
-  assert( writer->_is_hijacked );
-  auto ctx = http_response_writer_compose_response( writer );
-
-  writer->_chunks_flushed = true;
-  writer->_response_sent = true;
-  writer->_chunks = nullptr;  // release all cached data
-
-  return std::make_tuple( ctx, !writer->_response_complete );
-}
-auto http_response_writer_flush_response_body( http_response_writer writer, http_response_write write, http_send_response_entity_body_end callback )->void {
-  assert( writer->_is_hijacked );
-  http_send_response_entity_body(writer->_server->_tpio, writer->_server->_queue, writer->_rid, write, callback);
-}
 auto http_response_writer_hijack(http_response_writer writer)->void {
   assert(writer->_is_hijacked);
   writer->_is_hijacked = true;
@@ -105,6 +119,9 @@ auto _http_chunks_write( uint8_t*buf, uintptr_t buflen, http_chunks chunks )->vo
 }
 
 auto _http_response_headers_write( http_response_headers*dest, uint8_t*header_start, uintptr_t hlen, http_headers headers )->void {
+  if ( !headers ) {
+    return;
+  }
   dest->pTrailers = nullptr;
   dest->TrailerCount = 0;
   dest->UnknownHeaderCount = (uint16_t)headers->_unknown_headers.size();
@@ -147,11 +164,14 @@ auto http_response_writer_write( http_response_writer writer, uint8_t* data, uin
 auto http_response_writer_status_code( http_response_writer writer, uint32_t status_code )->void {
   writer->_status_code = status_code;
 }
-auto http_response_writer_statu_reason( http_response_writer writer, tpio_string const&reason )->void {
+auto http_response_writer_status_reason( http_response_writer writer, tpio_string const&reason )->void {
   writer->_status_reason = reason;
 }
 
 auto _http_headers_alloc_size( http_headers headers )->uintptr_t {
+  if ( !headers ) {
+    return 0;
+  }
   auto uz = headers->_unknown_headers.size();
   auto kz = headers->_known_headers.size();
   auto uhz = sizeof(http_unknown_header)* uz;
@@ -167,6 +187,9 @@ auto _http_headers_alloc_size( http_headers headers )->uintptr_t {
   return uhz + uxz + kxz;
 }
 auto _http_chunks_data_size( http_chunks chunks )->uintptr_t {
+  if ( !chunks ) {
+    return 0;
+  }
   uint32_t rtn = 0;
   std::for_each( chunks->cbegin(), chunks->cend(), [&rtn](const http_data_chunk&c) {
     assert( c.DataChunkType == HttpDataChunkFromMemory );
@@ -175,3 +198,4 @@ auto _http_chunks_data_size( http_chunks chunks )->uintptr_t {
   } );
   return rtn;
 }
+
